@@ -1,12 +1,18 @@
 /**
  * Cloudflare Worker that forwards requests based on path instead of subdomain
- * Example: doh.example.com/google/query-dns → dns.google/dns-query
+ * Example: doh.example.com/google/query-dns?name=example.com → dns.google/resolve?name=example.com
  * Supports configuration via Cloudflare Worker variables
  */
 
 // Default configuration for path mappings
 const DEFAULT_PATH_MAPPINGS = {
 	'/google': {
+		targetDomain: 'dns.google',
+		pathMapping: {
+			'/query-dns': '/resolve',
+		},
+	},
+	'/google-rfc': {
 		targetDomain: 'dns.google',
 		pathMapping: {
 			'/query-dns': '/dns-query',
@@ -211,9 +217,14 @@ const HOMEPAGE_HTML = `<!DOCTYPE html>
 			  <h2>使用方法</h2>
 			  <p>本服务已部署到 Cloudflare，您可以直接使用以下地址进行 DNS 查询：</p>
   
-			  <h3>转发到 Google DoH 服务</h3>
+			  <h3>转发到 Google JSON API</h3>
 			  <div class="example">
 				  <code>https://doh-proxy.example.com/google/query-dns?name=example.com</code>
+			  </div>
+
+			  <h3>转发到 Google RFC 8484 DoH 服务</h3>
+			  <div class="example">
+				  <code>https://doh-proxy.example.com/google-rfc/query-dns?dns=BASE64URL_DNS_MESSAGE</code>
 			  </div>
   
 			  <h3>转发到 Cloudflare DoH 服务</h3>
@@ -223,6 +234,7 @@ const HOMEPAGE_HTML = `<!DOCTYPE html>
   
 			  <h3>HTTP 请求示例</h3>
 			  <pre><code>curl -H "accept: application/dns-json" "https://doh-proxy.example.com/google/query-dns?name=example.com&type=A"</code></pre>
+			  <p>浏览器、操作系统等 RFC 8484 客户端请使用 <code>/google-rfc/query-dns</code>。</p>
 		  </section>
   
 		  <div class="grid">
@@ -260,6 +272,12 @@ const HOMEPAGE_HTML = `<!DOCTYPE html>
 	"/google": {
 	  "targetDomain": "dns.google",
 	  "pathMapping": {
+		"/query-dns": "/resolve"
+	  }
+	},
+	"/google-rfc": {
+	  "targetDomain": "dns.google",
+	  "pathMapping": {
 		"/query-dns": "/dns-query"
 	  }
 	},
@@ -279,7 +297,7 @@ const HOMEPAGE_HTML = `<!DOCTYPE html>
   
 				  <p>配置说明：</p>
 				  <ul>
-					  <li>键名为路径前缀，如 <code>/google</code></li>
+					  <li>键名为路径前缀，如 <code>/google</code>、<code>/google-rfc</code></li>
 					  <li><code>targetDomain</code> 为目标域名</li>
 					  <li><code>pathMapping</code> 定义路径映射规则</li>
 				  </ul>
@@ -298,7 +316,7 @@ const HOMEPAGE_HTML = `<!DOCTYPE html>
 					  <li>点击"设置"按钮</li>
 					  <li>滚动到底部，勾选"启用基于 HTTPS 的 DNS"</li>
 					  <li>选择"自定义"选项，并输入以下 URL（以 Google 为例）：<br>
-						  <code>https://your-worker-domain.com/google/query-dns</code>
+						  <code>https://your-worker-domain.com/google-rfc/query-dns</code>
 					  </li>
 					  <li>点击"确定"保存设置</li>
 				  </ol>
@@ -324,7 +342,7 @@ const HOMEPAGE_HTML = `<!DOCTYPE html>
 					  <li>滚动到"安全"部分</li>
 					  <li>找到"使用安全 DNS 服务指定如何查找网站的网络地址"</li>
 					  <li>选择"自定义"选项，并输入以下 URL（以 Google 为例）：<br>
-						  <code>https://your-worker-domain.com/google/query-dns</code>
+						  <code>https://your-worker-domain.com/google-rfc/query-dns</code>
 					  </li>
 				  </ol>
 			  </div>
@@ -340,7 +358,7 @@ const HOMEPAGE_HTML = `<!DOCTYPE html>
 					  <li>开启"IPv4 的 DNS over HTTPS"</li>
 					  <li>在"首选 DNS"字段输入 DoH 提供商的 IP 地址</li>
 					  <li>在"首选 DoH 模式"下拉菜单中选择"自定义"并输入您的 DoH URL：<br>
-						  <code>https://your-worker-domain.com/google/query-dns</code>
+						  <code>https://your-worker-domain.com/google-rfc/query-dns</code>
 					  </li>
 				  </ol>
   
@@ -469,8 +487,10 @@ async function handleRequest(request, env) {
 	// Get the path mappings from env or defaults
 	const pathMappings = getPathMappings(env);
 
-	// Find the matching path prefix
-	const pathPrefix = Object.keys(pathMappings).find((prefix) => path.startsWith(prefix));
+	// Use the longest matching prefix to avoid "/google" capturing "/google-rfc".
+	const pathPrefix = Object.keys(pathMappings)
+		.sort((left, right) => right.length - left.length)
+		.find((prefix) => path.startsWith(prefix));
 
 	if (pathPrefix) {
 		const mapping = pathMappings[pathPrefix];

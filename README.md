@@ -13,13 +13,14 @@
 
 ## 工作原理
 
-该 Worker 根据请求的路径前缀确定转发目标，然后将请求转发到相应的 DoH 服务提供商。例如，当访问 `doh.example.com/google/query-dns?name=example.com` 时，该请求会被转发到 `dns.google/dns-query?name=example.com`。
+该 Worker 根据请求的路径前缀确定转发目标，然后将请求转发到相应的 DoH 服务提供商。例如，当访问 `doh.example.com/google/query-dns?name=example.com` 时，该请求会被转发到 `dns.google/resolve?name=example.com`。
 
 ### 默认路径映射
 
 Worker 内置了以下默认映射规则：
 
-- `/google/query-dns` → `dns.google/dns-query`（Google 的 DoH 服务）
+- `/google/query-dns` → `dns.google/resolve`（Google JSON API，适用于 `name/type` 查询参数）
+- `/google-rfc/query-dns` → `dns.google/dns-query`（Google RFC 8484 DoH，适用于标准 DoH 客户端）
 - `/cloudflare/query-dns` → `one.one.one.one/dns-query`（Cloudflare 的 DoH 服务）
 
 ## 配置说明
@@ -48,6 +49,12 @@ Worker 可以使用默认配置直接部署使用。
 ```json
 {
 	"/google": {
+		"targetDomain": "dns.google",
+		"pathMapping": {
+			"/query-dns": "/resolve"
+		}
+	},
+	"/google-rfc": {
 		"targetDomain": "dns.google",
 		"pathMapping": {
 			"/query-dns": "/dns-query"
@@ -100,10 +107,21 @@ Worker 可以使用默认配置直接部署使用。
   https://doh-proxy.workers.dev/google/query-dns?name=example.com
   ```
 
+- 使用 Google 的 RFC 8484 DoH 服务：
+
+  ```
+  https://doh-proxy.workers.dev/google-rfc/query-dns?dns=BASE64URL_DNS_MESSAGE
+  ```
+
 - 使用 Cloudflare 的 DoH 服务：
   ```
   https://doh-proxy.workers.dev/cloudflare/query-dns?name=example.com
   ```
+
+其中：
+
+- `curl`、浏览器直接访问、调试脚本这类使用 `name/type` 查询参数的客户端，应使用 `/google/query-dns`
+- 浏览器 DoH、自定义操作系统 DoH 等 RFC 8484 标准客户端，应使用 `/google-rfc/query-dns`
 
 ## 注意事项
 
